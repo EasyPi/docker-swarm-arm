@@ -1,0 +1,41 @@
+services:
+- docker
+
+env:
+  global:
+  - SWARM_VERSION=1.2.3
+  - CGO_ENABLED=0
+  - GOOS=linux
+  - GOARCH=arm
+  matrix:
+  - GOARM=6
+  - GOARM=7
+
+before_script:
+  curl -L https://github.com/docker/swarm/archive/v${SWARM_VERSION}.tar.gz | tar xz
+
+script:
+- docker version
+- docker pull golang
+- docker run --rm -v "${PWD}/swarm-${SWARM_VERSION}":/go/src/github/docker/swarm -w /go/src/github/docker/swarm -e GOOS=$GOGS -e GOARCH=$GOARCH -e GOARM=$GOARM golang sh -c "go get -v -d && go build -v -a -tags netgo -installsuffix netgo -ldflags '-s -w -X github.com/docker/swarm/version.GITCOMMIT=${SWARM_VERSION}'"
+- cp swarm-${SWARM_VERSION}/swarm swarm-${SWARM_VERSION}-armv${GOARM}h
+- cp swarm-${SWARM_VERSION}/swarm swarm
+- docker build -t easypi/swarm-arm:${SWARM_VERSION} .
+
+after_success:
+  if ([ "$TRAVIS_BRANCH" == "master" ] || [ ! -z "$TRAVIS_TAG" ]) && 
+      [ "$TRAVIS_PULL_REQUEST" == "false" ] && [ "$GOARM" == "6" ]; then
+    docker login -e="$DOCKER_EMAIL" -u="$DOCKER_USERNAME" -p="$DOCKER_PASSWORD";
+    docker tag easypi/swarm-arm:${SWARM_VERSION} easypi/swarm-arm:latest;
+    docker push easypi/swarm-arm:${SWARM_VERSION};
+    docker push easypi/swarm-arm:latest;
+  fi
+
+deploy:
+  provider: releases
+  api_key:
+    secure: h1Ogj/4bOX7lETaVMG+oT6wzVfv+hce22H5hBmWdoQcGx/vH5gAl9FWvS+jW3wdNHSgdeVGFAGG7yw6UtexyHm3UOAHqRYXYzXXU+bLhYIXIVik+nAQfhw1hkk59nsWpr5ubRIo7n/cu6Djzy+7EPncc2mkEvEeLRlRVgGLGpb9F8a0tNAomN1EH1C2T89axYgOdwkwz1gX6CSJhHpCErVbOQ3LGHttuPzq1JZel1YN2idXSF4H4oz42huhxvsyPpTBjT9oPZMyI3Oya+C3j9Zq3w6WEWPg3lD5ceat95JPJotANI42PNV0nbLkhF4ag6OVZ4JkmaWqxQ17B/3MP5Ric2xDI1XiybLcA1XYKTFcJugkp3YtDkU9ju8QrpttxAVhBN/zKzPLqJneVhV/oHUYguLwjcCxHh7Ecer+Dzh3ODRZh+clUqjOKR6WtP/aEC9ug/mWFdYLrXqpXfXG9z3KuwBgAngaefLkRLEfhpk7fLIGwR69XLm9OtMrHbIRyuRywZrKCVLEXM6Pg0oFjGO6YES5A+wXkXtDwHWGCqtfq+MA5B76j9zMKGopRNgZm0lnebtg/foEXnJIyRVskfvgdEyVldzLf9DmXkaiCl45e+xGSrwtTb2Q5CmGyUtY3GeLdibsXERya2YSCGaDPtAmrQtWncTPaRcyQLLnQ/yM=
+  file: swarm-${SWARM_VERSION}-armv${GOARM}h
+  skip_cleanup: true
+  on:
+    tags: true
